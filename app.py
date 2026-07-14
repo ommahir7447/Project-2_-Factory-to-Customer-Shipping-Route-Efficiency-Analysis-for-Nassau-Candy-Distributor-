@@ -10,7 +10,7 @@ import os
 # ──────────────────────────────────────────────
 st.set_page_config(
     page_title="Nassau Candy · Shipping Route Efficiency",
-    page_icon="🚚",
+    page_icon="NC",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -235,11 +235,11 @@ df_raw = load_data()
 # SIDEBAR FILTERS
 # ──────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("## 🎛️ Filters")
+    st.markdown("## Filters")
     st.markdown("---")
 
     # ── Date Range ──
-    st.markdown("#### 📅 Date Range")
+    st.markdown("#### Date Range")
     min_date = df_raw["Order Date"].min().date()
     max_date = df_raw["Order Date"].max().date()
     date_range = st.date_input(
@@ -253,7 +253,7 @@ with st.sidebar:
     st.markdown("---")
 
     # ── Region / State ──
-    st.markdown("#### 🌎 Region & State")
+    st.markdown("#### Region & State")
     all_regions = sorted(df_raw["Region"].unique())
     selected_regions = st.multiselect("Region", all_regions, default=all_regions, key="regions")
 
@@ -265,14 +265,14 @@ with st.sidebar:
     st.markdown("---")
 
     # ── Ship Mode ──
-    st.markdown("#### 🚢 Ship Mode")
+    st.markdown("#### Ship Mode")
     all_modes = sorted(df_raw["Ship Mode"].unique())
     selected_modes = st.multiselect("Ship Mode", all_modes, default=all_modes, key="ship_modes")
 
     st.markdown("---")
 
     # ── Lead-time Threshold ──
-    st.markdown("#### ⏱️ Lead-Time Threshold")
+    st.markdown("#### Lead-Time Threshold")
     min_days = int(df_raw["Shipping Days"].min())
     max_days = int(df_raw["Shipping Days"].max())
     lead_time_range = st.slider(
@@ -306,7 +306,7 @@ df = df_raw[mask].copy()
 st.markdown(
     """
     <div class="dashboard-title">
-        <h1>🚚 Nassau Candy · Shipping Route Efficiency</h1>
+        <h1>Nassau Candy &middot; Shipping Route Efficiency</h1>
         <p>Factory-to-Customer Shipping Route Performance Analysis</p>
     </div>
     """,
@@ -315,7 +315,7 @@ st.markdown(
 
 # ── Quick stats bar ──
 if df.empty:
-    st.warning("⚠️ No data matches your current filters. Please adjust the sidebar filters.")
+    st.warning("No data matches your current filters. Please adjust the sidebar filters.")
     st.stop()
 
 total_orders = len(df)
@@ -335,17 +335,17 @@ st.markdown("---")
 # TABS
 # ──────────────────────────────────────────────
 tab1, tab2, tab3, tab4 = st.tabs([
-    "📊 Route Efficiency Overview",
-    "🗺️ Geographic Shipping Map",
-    "🚢 Ship Mode Comparison",
-    "🔍 Route Drill-Down",
+    "Route Efficiency Overview",
+    "Geographic Shipping Map",
+    "Ship Mode Comparison",
+    "Route Drill-Down",
 ])
 
 # ══════════════════════════════════════════════
 # TAB 1 — ROUTE EFFICIENCY OVERVIEW
 # ══════════════════════════════════════════════
 with tab1:
-    st.markdown('<div class="section-header"><h3>📊 Average Lead Time by Route</h3></div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header"><h3>Average Lead Time by Route</h3></div>', unsafe_allow_html=True)
 
     route_stats = (
         df.groupby("Route_Region_State")
@@ -386,7 +386,7 @@ with tab1:
     st.plotly_chart(fig_lead, use_container_width=True)
 
     # ── Leaderboard ──
-    st.markdown('<div class="section-header"><h3>🏆 Route Performance Leaderboard</h3></div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header"><h3>Route Performance Leaderboard</h3></div>', unsafe_allow_html=True)
 
     leaderboard = route_stats.sort_values("Avg_Efficiency", ascending=False).reset_index(drop=True)
     leaderboard.index += 1
@@ -423,7 +423,7 @@ with tab2:
         .reset_index()
     )
 
-    st.markdown('<div class="section-header"><h3>🗺️ Shipping Lead-Time by State</h3></div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header"><h3>Shipping Lead-Time by State</h3></div>', unsafe_allow_html=True)
 
     map_col1, map_col2 = st.columns(2)
 
@@ -496,7 +496,7 @@ with tab2:
         st.plotly_chart(fig_map2, use_container_width=True)
 
     # ── Regional Bottleneck ──
-    st.markdown('<div class="section-header"><h3>⚠️ Regional Bottleneck Analysis</h3></div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header"><h3>Regional Bottleneck Analysis</h3></div>', unsafe_allow_html=True)
 
     region_stats = (
         df.groupby("Region")
@@ -568,7 +568,7 @@ with tab2:
 # TAB 3 — SHIP MODE COMPARISON
 # ══════════════════════════════════════════════
 with tab3:
-    st.markdown('<div class="section-header"><h3>🚢 Lead Time Comparison by Ship Mode</h3></div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header"><h3>Lead Time Comparison by Ship Mode</h3></div>', unsafe_allow_html=True)
 
     mode_stats = (
         df.groupby("Ship Mode")
@@ -585,7 +585,6 @@ with tab3:
 
     # ── KPI row per mode ──
     mode_order = ["Same Day", "First Class", "Second Class", "Standard Class"]
-    mode_icons = {"Same Day": "⚡", "First Class": "🥇", "Second Class": "🥈", "Standard Class": "📦"}
     mode_colors = {"Same Day": PURPLE, "First Class": TEAL, "Second Class": AMBER, "Standard Class": CORAL}
 
     mode_cols = st.columns(len(mode_stats))
@@ -595,7 +594,7 @@ with tab3:
             continue
         row = row.iloc[0]
         with mode_cols[i]:
-            st.metric(f"{mode_icons.get(mode, '📦')} {mode}", f"{row['Avg_Days']:.0f} days",
+            st.metric(mode, f"{row['Avg_Days']:.0f} days",
                       delta=f"{row['On_Time_Pct']:.0f}% on-time")
 
     sm_col1, sm_col2 = st.columns(2)
@@ -642,7 +641,7 @@ with tab3:
         st.plotly_chart(fig_box, use_container_width=True)
 
     # ── Donut: delay rate per ship mode ──
-    st.markdown('<div class="section-header"><h3>📈 Delay Breakdown by Ship Mode</h3></div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header"><h3>Delay Breakdown by Ship Mode</h3></div>', unsafe_allow_html=True)
 
     donut_col1, donut_col2 = st.columns([1, 1])
 
@@ -655,7 +654,7 @@ with tab3:
             color="Delay Status",
             color_discrete_map={"On-Time": TEAL, "Delayed": CORAL},
         )
-        apply_layout(fig_donut, title="Order Distribution: Ship Mode → Delay Status", height=440)
+        apply_layout(fig_donut, title="Order Distribution: Ship Mode to Delay Status", height=440)
         st.plotly_chart(fig_donut, use_container_width=True)
 
     with donut_col2:
@@ -674,7 +673,7 @@ with tab3:
 # TAB 4 — ROUTE DRILL-DOWN
 # ══════════════════════════════════════════════
 with tab4:
-    st.markdown('<div class="section-header"><h3>🔍 State-Level Performance Insights</h3></div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header"><h3>State-Level Performance Insights</h3></div>', unsafe_allow_html=True)
 
     available_states = sorted(df["State/Province"].unique())
     selected_state = st.selectbox("Select a State / Province", available_states, key="drill_state")
@@ -762,11 +761,11 @@ with tab4:
                 "<extra></extra>"
             ),
         )
-        apply_layout(fig_timeline, title=f"Shipment Timeline — {selected_state}", height=420)
+        apply_layout(fig_timeline, title=f"Shipment Timeline \u2014 {selected_state}", height=420)
         st.plotly_chart(fig_timeline, use_container_width=True)
 
     # ── Detailed data table ──
-    st.markdown('<div class="section-header"><h3>📋 Order-Level Shipment Details</h3></div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header"><h3>Order-Level Shipment Details</h3></div>', unsafe_allow_html=True)
 
     display_cols = [
         "Order ID", "Order Date", "Ship Date", "Ship Mode", "City",
@@ -801,7 +800,7 @@ st.markdown(
     """
     <div style="text-align:center; padding: 12px 0 24px 0;">
         <span style="color:#4b5563; font-size:0.82rem;">
-            Nassau Candy · Shipping Route Efficiency Dashboard &nbsp;·&nbsp; Built with Streamlit & Plotly
+            Nassau Candy &middot; Shipping Route Efficiency Dashboard &nbsp;&middot;&nbsp; Built with Streamlit &amp; Plotly
         </span>
     </div>
     """,
