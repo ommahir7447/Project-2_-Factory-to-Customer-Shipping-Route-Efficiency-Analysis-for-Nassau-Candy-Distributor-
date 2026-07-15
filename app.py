@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import numpy as np
 import os
 
 # ──────────────────────────────────────────────
@@ -271,6 +272,13 @@ with st.sidebar:
 
     st.markdown("---")
 
+    # ── Division ──
+    st.markdown("#### Division")
+    all_divisions = sorted(df_raw["Division"].unique())
+    selected_divisions = st.multiselect("Division", all_divisions, default=all_divisions, key="divisions")
+
+    st.markdown("---")
+
     # ── Lead-time Threshold ──
     st.markdown("#### Lead-Time Threshold")
     min_days = int(df_raw["Shipping Days"].min())
@@ -283,11 +291,28 @@ with st.sidebar:
         key="lead_time",
     )
 
+    st.markdown("---")
+
+    # ── Executive Summary Download ──
+    st.markdown("#### 📄 Reports")
+    exec_summary_path = os.path.join(os.path.dirname(__file__), "executive_summary.html")
+    if os.path.exists(exec_summary_path):
+        with open(exec_summary_path, "r", encoding="utf-8") as f:
+            exec_html = f.read()
+        st.download_button(
+            label="⬇ Download Executive Summary",
+            data=exec_html,
+            file_name="Nassau_Candy_Executive_Summary.html",
+            mime="text/html",
+            key="dl_exec_summary",
+        )
+
 # ── Apply Filters ──
 mask = (
     (df_raw["Region"].isin(selected_regions))
     & (df_raw["State/Province"].isin(selected_states))
     & (df_raw["Ship Mode"].isin(selected_modes))
+    & (df_raw["Division"].isin(selected_divisions))
     & (df_raw["Shipping Days"] >= lead_time_range[0])
     & (df_raw["Shipping Days"] <= lead_time_range[1])
 )
@@ -334,11 +359,13 @@ st.markdown("---")
 # ──────────────────────────────────────────────
 # TABS
 # ──────────────────────────────────────────────
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "Route Efficiency Overview",
     "Geographic Shipping Map",
     "Ship Mode Comparison",
     "Route Drill-Down",
+    "Trend & Seasonality",
+    "Profitability & Cost",
 ])
 
 # ══════════════════════════════════════════════
@@ -791,6 +818,382 @@ with tab4:
             ),
         },
     )
+
+# ══════════════════════════════════════════════
+# TAB 5 — TREND & SEASONALITY ANALYSIS
+# ══════════════════════════════════════════════
+with tab5:
+    st.markdown('<div class="section-header"><h3>Monthly Shipping Volume Trend</h3></div>', unsafe_allow_html=True)
+
+    # ── Monthly volume line chart ──
+    monthly_vol = (
+        df.groupby([df["Order Date"].dt.to_period("M")])
+        .agg(Orders=("Row ID", "count"), Avg_Days=("Shipping Days", "mean"))
+        .reset_index()
+    )
+    monthly_vol["Order Date"] = monthly_vol["Order Date"].astype(str)
+
+    fig_vol = make_subplots(specs=[[{"secondary_y": True}]])
+    fig_vol.add_trace(
+        go.Bar(
+            x=monthly_vol["Order Date"],
+            y=monthly_vol["Orders"],
+            name="Orders",
+            marker_color=TEAL,
+            opacity=0.7,
+            hovertemplate="<b>%{x}</b><br>Orders: <b>%{y:,}</b><extra></extra>",
+        ),
+        secondary_y=False,
+    )
+    fig_vol.add_trace(
+        go.Scatter(
+            x=monthly_vol["Order Date"],
+            y=monthly_vol["Avg_Days"],
+            name="Avg Shipping Days",
+            mode="lines+markers",
+            line=dict(color=CORAL, width=2.5),
+            marker=dict(size=6),
+            hovertemplate="<b>%{x}</b><br>Avg Days: <b>%{y:.0f}</b><extra></extra>",
+        ),
+        secondary_y=True,
+    )
+    apply_layout(fig_vol, title="Monthly Order Volume & Average Lead Time", height=440)
+    fig_vol.update_yaxes(title_text="Orders", secondary_y=False)
+    fig_vol.update_yaxes(title_text="Avg Shipping Days", secondary_y=True)
+    st.plotly_chart(fig_vol, use_container_width=True)
+
+    trend_col1, trend_col2 = st.columns(2)
+
+    with trend_col1:
+        # ── Seasonal delay heatmap ──
+        st.markdown('<div class="section-header"><h3>Seasonal Delay Heatmap</h3></div>', unsafe_allow_html=True)
+
+        heat_data = df.copy()
+        heat_data["Month"] = heat_data["Order Date"].dt.month_name().str[:3]
+        heat_data["Month_Num"] = heat_data["Order Date"].dt.month
+        month_order = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                       "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+        heatmap_df = (
+            heat_data.groupby(["Ship Mode", "Month", "Month_Num"])
+            .agg(Delay_Rate=("Delay Flag", "mean"))
+            .reset_index()
+            .sort_values("Month_Num")
+        )
+        heatmap_df["Delay_Rate"] = (heatmap_df["Delay_Rate"] * 100).round(1)
+
+        heatmap_pivot = heatmap_df.pivot(index="Ship Mode", columns="Month", values="Delay_Rate")
+        heatmap_pivot = heatmap_pivot.reindex(columns=month_order)
+
+        fig_heat = go.Figure(
+            go.Heatmap(
+                z=heatmap_pivot.values,
+                x=heatmap_pivot.columns.tolist(),
+                y=heatmap_pivot.index.tolist(),
+                colorscale=[[0, "#0d9488"], [0.4, "#fbbf24"], [1, "#ef4444"]],
+                colorbar=dict(title="Delay %", thickness=10),
+                text=heatmap_pivot.values,
+                texttemplate="%{text:.0f}%",
+                textfont=dict(size=10),
+                hovertemplate="<b>%{y}</b> — %{x}<br>Delay Rate: <b>%{z:.1f}%</b><extra></extra>",
+            )
+        )
+        apply_layout(fig_heat, title="Delay Rate: Ship Mode × Month", height=380)
+        st.plotly_chart(fig_heat, use_container_width=True)
+
+    with trend_col2:
+        # ── Quarter-over-quarter efficiency ──
+        st.markdown('<div class="section-header"><h3>Quarterly Efficiency Comparison</h3></div>', unsafe_allow_html=True)
+
+        q_stats = (
+            df.groupby(["Order Year", "Order Quarter"])
+            .agg(
+                Avg_Efficiency=("Route Efficiency Score", "mean"),
+                Orders=("Row ID", "count"),
+                On_Time_Pct=("Delay Flag", lambda x: (1 - x.mean()) * 100),
+            )
+            .reset_index()
+        )
+        q_stats["Quarter_Label"] = q_stats["Order Year"].astype(str) + " Q" + q_stats["Order Quarter"].astype(str)
+
+        fig_qoq = px.bar(
+            q_stats,
+            x="Quarter_Label",
+            y="Avg_Efficiency",
+            color="Avg_Efficiency",
+            color_continuous_scale=[[0, CORAL], [0.5, AMBER], [1, TEAL]],
+            text="Avg_Efficiency",
+            custom_data=["Orders", "On_Time_Pct"],
+        )
+        fig_qoq.update_traces(
+            texttemplate="%{text:.1f}",
+            textposition="outside",
+            hovertemplate=(
+                "<b>%{x}</b><br>"
+                "Efficiency: <b>%{y:.2f}</b><br>"
+                "Orders: <b>%{customdata[0]:,}</b><br>"
+                "On-Time: <b>%{customdata[1]:.1f}%</b>"
+                "<extra></extra>"
+            ),
+        )
+        apply_layout(fig_qoq, title="Avg Efficiency Score by Quarter", height=380,
+                     showlegend=False, coloraxis_showscale=False)
+        fig_qoq.update_xaxes(tickangle=45)
+        st.plotly_chart(fig_qoq, use_container_width=True)
+
+    # ── Rolling average lead-time trend ──
+    st.markdown('<div class="section-header"><h3>Rolling 30-Day Average Lead Time</h3></div>', unsafe_allow_html=True)
+
+    daily_avg = (
+        df.groupby(df["Order Date"].dt.date)
+        .agg(Avg_Days=("Shipping Days", "mean"), Orders=("Row ID", "count"))
+        .reset_index()
+        .sort_values("Order Date")
+    )
+    daily_avg["Rolling_30"] = daily_avg["Avg_Days"].rolling(window=30, min_periods=5).mean()
+    daily_avg["Rolling_90"] = daily_avg["Avg_Days"].rolling(window=90, min_periods=10).mean()
+
+    fig_roll = go.Figure()
+    fig_roll.add_trace(
+        go.Scatter(
+            x=daily_avg["Order Date"],
+            y=daily_avg["Avg_Days"],
+            mode="markers",
+            name="Daily Avg",
+            marker=dict(color=TEAL, size=4, opacity=0.3),
+            hovertemplate="Date: %{x}<br>Avg Days: %{y:.0f}<extra></extra>",
+        )
+    )
+    fig_roll.add_trace(
+        go.Scatter(
+            x=daily_avg["Order Date"],
+            y=daily_avg["Rolling_30"],
+            mode="lines",
+            name="30-Day Rolling Avg",
+            line=dict(color=AMBER, width=2.5),
+            hovertemplate="Date: %{x}<br>30-Day Avg: %{y:.0f}<extra></extra>",
+        )
+    )
+    fig_roll.add_trace(
+        go.Scatter(
+            x=daily_avg["Order Date"],
+            y=daily_avg["Rolling_90"],
+            mode="lines",
+            name="90-Day Rolling Avg",
+            line=dict(color=PURPLE, width=2, dash="dash"),
+            hovertemplate="Date: %{x}<br>90-Day Avg: %{y:.0f}<extra></extra>",
+        )
+    )
+    apply_layout(fig_roll, title="Daily Lead Time with Rolling Averages", height=400)
+    st.plotly_chart(fig_roll, use_container_width=True)
+
+
+# ══════════════════════════════════════════════
+# TAB 6 — PROFITABILITY & COST ANALYTICS
+# ══════════════════════════════════════════════
+with tab6:
+    st.markdown('<div class="section-header"><h3>Profit Margin Analysis</h3></div>', unsafe_allow_html=True)
+
+    prof_col1, prof_col2 = st.columns(2)
+
+    with prof_col1:
+        # ── Profit margin by region (violin) ──
+        fig_viol_r = px.violin(
+            df,
+            x="Region",
+            y="Profit Margin (%)",
+            color="Region",
+            color_discrete_sequence=[TEAL, AMBER, PURPLE, CORAL, CYAN],
+            box=True,
+            points="outliers",
+        )
+        fig_viol_r.update_traces(
+            hovertemplate="<b>%{x}</b><br>Margin: %{y:.1f}%<extra></extra>"
+        )
+        apply_layout(fig_viol_r, title="Profit Margin Distribution by Region", height=440, showlegend=False)
+        st.plotly_chart(fig_viol_r, use_container_width=True)
+
+    with prof_col2:
+        # ── Profit margin by ship mode (violin) ──
+        fig_viol_m = px.violin(
+            df,
+            x="Ship Mode",
+            y="Profit Margin (%)",
+            color="Ship Mode",
+            color_discrete_sequence=[TEAL, CYAN, AMBER, CORAL],
+            box=True,
+            points="outliers",
+            category_orders={"Ship Mode": ["Same Day", "First Class", "Second Class", "Standard Class"]},
+        )
+        fig_viol_m.update_traces(
+            hovertemplate="<b>%{x}</b><br>Margin: %{y:.1f}%<extra></extra>"
+        )
+        apply_layout(fig_viol_m, title="Profit Margin Distribution by Ship Mode", height=440, showlegend=False)
+        st.plotly_chart(fig_viol_m, use_container_width=True)
+
+    # ── Cost-per-unit vs Shipping Days scatter ──
+    st.markdown('<div class="section-header"><h3>Cost Efficiency Frontier</h3></div>', unsafe_allow_html=True)
+
+    cost_col1, cost_col2 = st.columns(2)
+
+    with cost_col1:
+        fig_frontier = px.scatter(
+            df,
+            x="Shipping Days",
+            y="Cost Per Unit",
+            color="Ship Mode",
+            color_discrete_map={
+                "Same Day": PURPLE, "First Class": TEAL,
+                "Second Class": AMBER, "Standard Class": CORAL,
+            },
+            opacity=0.5,
+            custom_data=["Region", "Division", "Route Efficiency Score"],
+            category_orders={"Ship Mode": ["Same Day", "First Class", "Second Class", "Standard Class"]},
+        )
+        fig_frontier.update_traces(
+            marker=dict(size=5, line=dict(width=0.3, color="#1A1F2E")),
+            hovertemplate=(
+                "Days: <b>%{x}</b><br>"
+                "Cost/Unit: <b>$%{y:.2f}</b><br>"
+                "Region: %{customdata[0]}<br>"
+                "Division: %{customdata[1]}<br>"
+                "Efficiency: %{customdata[2]:.2f}"
+                "<extra></extra>"
+            ),
+        )
+        apply_layout(fig_frontier, title="Cost Per Unit vs Shipping Days", height=460)
+        st.plotly_chart(fig_frontier, use_container_width=True)
+
+    with cost_col2:
+        # ── Revenue Per Unit by Division ──
+        div_stats = (
+            df.groupby("Division")
+            .agg(
+                Avg_Revenue_Unit=("Revenue Per Unit", "mean"),
+                Avg_Cost_Unit=("Cost Per Unit", "mean"),
+                Avg_Margin=("Profit Margin (%)", "mean"),
+                Orders=("Row ID", "count"),
+            )
+            .reset_index()
+            .sort_values("Avg_Revenue_Unit", ascending=True)
+        )
+
+        fig_div = go.Figure()
+        fig_div.add_trace(
+            go.Bar(
+                y=div_stats["Division"],
+                x=div_stats["Avg_Revenue_Unit"],
+                name="Revenue / Unit",
+                orientation="h",
+                marker_color=TEAL,
+                text=div_stats["Avg_Revenue_Unit"].round(2),
+                texttemplate="$%{text}",
+                textposition="outside",
+                customdata=div_stats[["Orders", "Avg_Margin"]].values,
+                hovertemplate=(
+                    "<b>%{y}</b><br>"
+                    "Revenue/Unit: <b>$%{x:.2f}</b><br>"
+                    "Orders: <b>%{customdata[0]:,}</b><br>"
+                    "Avg Margin: <b>%{customdata[1]:.1f}%</b>"
+                    "<extra></extra>"
+                ),
+            )
+        )
+        fig_div.add_trace(
+            go.Bar(
+                y=div_stats["Division"],
+                x=div_stats["Avg_Cost_Unit"],
+                name="Cost / Unit",
+                orientation="h",
+                marker_color=CORAL,
+                text=div_stats["Avg_Cost_Unit"].round(2),
+                texttemplate="$%{text}",
+                textposition="outside",
+                hovertemplate=(
+                    "<b>%{y}</b><br>"
+                    "Cost/Unit: <b>$%{x:.2f}</b>"
+                    "<extra></extra>"
+                ),
+            )
+        )
+        apply_layout(fig_div, title="Revenue & Cost Per Unit by Division", height=460, barmode="group")
+        fig_div.update_yaxes(categoryorder="total ascending")
+        st.plotly_chart(fig_div, use_container_width=True)
+
+    # ── Cost Per Ship Day analysis ──
+    st.markdown('<div class="section-header"><h3>Cost Per Ship Day Analysis</h3></div>', unsafe_allow_html=True)
+
+    cpsd_col1, cpsd_col2 = st.columns(2)
+
+    with cpsd_col1:
+        # Filter out extreme outliers for better visualization
+        cpsd_filtered = df[df["Cost_Per_Ship_Day"] < df["Cost_Per_Ship_Day"].quantile(0.95)].copy()
+
+        cpsd_by_region = (
+            cpsd_filtered.groupby("Region")
+            .agg(
+                Avg_CPSD=("Cost_Per_Ship_Day", "mean"),
+                Median_CPSD=("Cost_Per_Ship_Day", "median"),
+                Orders=("Row ID", "count"),
+            )
+            .reset_index()
+            .sort_values("Avg_CPSD", ascending=False)
+        )
+
+        fig_cpsd = px.bar(
+            cpsd_by_region,
+            x="Region",
+            y=["Avg_CPSD", "Median_CPSD"],
+            barmode="group",
+            color_discrete_sequence=[TEAL, AMBER],
+            labels={"value": "Cost Per Ship Day ($)", "variable": "Metric"},
+        )
+        fig_cpsd.update_traces(
+            hovertemplate="<b>%{x}</b><br>Value: <b>$%{y:.4f}</b><extra></extra>"
+        )
+        apply_layout(fig_cpsd, title="Avg vs Median Cost/Ship Day by Region", height=400)
+        st.plotly_chart(fig_cpsd, use_container_width=True)
+
+    with cpsd_col2:
+        # ── Sales per ship day by mode ──
+        spsd_by_mode = (
+            df.groupby("Ship Mode")
+            .agg(
+                Avg_Sales_PSD=("Sales_Per_Ship_Day", "mean"),
+                Avg_Profit_PSD=("Profit_Per_Ship_Day", "mean"),
+                Orders=("Row ID", "count"),
+            )
+            .reset_index()
+        )
+
+        fig_spsd = go.Figure()
+        fig_spsd.add_trace(
+            go.Bar(
+                x=spsd_by_mode["Ship Mode"],
+                y=spsd_by_mode["Avg_Sales_PSD"],
+                name="Sales / Ship Day",
+                marker_color=TEAL,
+                text=spsd_by_mode["Avg_Sales_PSD"].round(4),
+                texttemplate="$%{text}",
+                textposition="outside",
+                hovertemplate="<b>%{x}</b><br>Sales/Day: <b>$%{y:.4f}</b><extra></extra>",
+            )
+        )
+        fig_spsd.add_trace(
+            go.Bar(
+                x=spsd_by_mode["Ship Mode"],
+                y=spsd_by_mode["Avg_Profit_PSD"],
+                name="Profit / Ship Day",
+                marker_color=PURPLE,
+                text=spsd_by_mode["Avg_Profit_PSD"].round(4),
+                texttemplate="$%{text}",
+                textposition="outside",
+                hovertemplate="<b>%{x}</b><br>Profit/Day: <b>$%{y:.4f}</b><extra></extra>",
+            )
+        )
+        apply_layout(fig_spsd, title="Avg Sales & Profit Per Ship Day by Mode", height=400, barmode="group")
+        st.plotly_chart(fig_spsd, use_container_width=True)
+
 
 # ──────────────────────────────────────────────
 # FOOTER
