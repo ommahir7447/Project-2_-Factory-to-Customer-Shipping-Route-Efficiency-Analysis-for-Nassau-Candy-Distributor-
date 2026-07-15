@@ -430,7 +430,7 @@ with tab1:
         else:
             return "background: linear-gradient(90deg, rgba(255,107,107,0.2), transparent); color: #FF6B6B;"
 
-    styled_lb = leaderboard.style.applymap(color_efficiency, subset=["Avg Efficiency Score"])
+    styled_lb = leaderboard.style.map(color_efficiency, subset=["Avg Efficiency Score"])
     st.dataframe(styled_lb, use_container_width=True, height=420)
 
 # ══════════════════════════════════════════════
